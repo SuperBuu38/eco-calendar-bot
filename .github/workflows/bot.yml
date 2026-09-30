@@ -62,5 +62,8 @@ jobs:
           path: state
           key: eco-state-${{ github.run_id }}
 
-      - name: Keepalive
-        uses: gautamkrishnar/keepalive-workflow@v2
+      - name: Keepalive (évite la désactivation après 60 jours sans activité)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/bot.yml/enable" || true
