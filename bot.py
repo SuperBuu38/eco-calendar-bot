@@ -207,8 +207,15 @@ def pick_highlights(events):
     pool = high or events
     if not high and len(events) <= 3:
         return set()
+    def group(e):  # « Core PCE m/m » et « a/a » = un seul temps fort
+        return e["cur"], re.sub(r" \((m/m|a/a|t/t)\)$", "", translate(e)[0])
     ranked = sorted(pool, key=lambda e: (-score(e), e["dt"]))
-    return {id(e) for e in ranked[:3]}
+    groups = []
+    for e in ranked:
+        if group(e) not in groups:
+            groups.append(group(e))
+    top = set(groups[:3])
+    return {id(e) for e in pool if group(e) in top}
 
 
 # --- Rendu --------------------------------------------------------------------
