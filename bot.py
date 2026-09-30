@@ -23,6 +23,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from fiches import fiche
 from translations import CURRENCY_COUNTRY, translate
 
 ROOT = Path(__file__).parent
@@ -194,8 +195,13 @@ def pick_highlights(events):
         if not e["speech"]:
             s += 1
         t = e["title"].lower()
-        if any(k in t for k in ("lagarde", "powell", "bailey", "cpi", "ism", "claims", "payroll", "pmi")):
+        if any(k in t for k in ("non-farm", "nonfarm", "payroll", "cpi", "pce", "rate decision", "fomc",
+                                "federal funds", "official bank rate", "main refinancing", "powell", "lagarde")):
+            s += 4
+        elif any(k in t for k in ("gdp", "ism", "pmi", "claims", "retail sales", "adp", "unemployment", "bailey")):
             s += 2
+        if "prelim" in t or "flash" in t or "final" not in t:
+            s += 0.5  # les premières estimations bougent plus le marché que les finales
         return s
     high = [e for e in events if e["impact"] >= 3]
     pool = high or events
@@ -233,6 +239,26 @@ def build_text(day, events, hot):
     if hot:
         lines += ["", "⭐ = temps fort de la journée"]
     return "\n".join(lines)
+
+
+def build_fiches(events, hot):
+    """Fiches « à savoir » pour les temps forts (une seule par type d'annonce)."""
+    blocks, seen = [], set()
+    for e in events:
+        if id(e) not in hot:
+            continue
+        f = fiche(e)
+        if not f or (f[0], e["cur"]) in seen:
+            continue
+        seen.add((f[0], e["cur"]))
+        fr, _ = translate(e)
+        fr = re.sub(r" \((m/m|a/a|t/t)\)$", "", fr)
+        mesure, effet, pourquoi = f
+        blocks.append(f"💡 **{fr}** · {FLAGS.get(e['cur'], e['cur'])} `{e['dt']:%H:%M}`\n"
+                      f"> **Ce que ça mesure :** {mesure}\n"
+                      f"> **Effet habituel :** {effet}\n"
+                      f"> **Pourquoi c'est suivi :** {pourquoi}")
+    return ("📘 **À savoir sur les temps forts**\n\n" + "\n\n".join(blocks)) if blocks else ""
 
 
 def build_html(day, events, hot):
@@ -306,6 +332,18 @@ def render_png(page_html, out):
 
 
 # --- Envoi --------------------------------------------------------------------
+def chunks(text, size=1900):
+    out, cur = [], ""
+    for block in text.split("\n\n"):
+        if cur and len(cur) + len(block) + 2 > size:
+            out.append(cur)
+            cur = ""
+        cur += ("\n\n" if cur else "") + block
+    if cur:
+        out.append(cur)
+    return out
+
+
 def send_discord(text, image):
     boundary = uuid.uuid4().hex
     parts = [(f'--{boundary}\r\nContent-Disposition: form-data; name="payload_json"\r\n'
@@ -362,12 +400,15 @@ def main():
     print(f"{len(events)} annonces retenues ({added} ajoutées grâce à Investing).")
 
     text = build_text(day, events, hot)
+    notes = build_fiches(events, hot)
     out = Path(os.getenv("OUT_DIR", ROOT / "out"))
     out.mkdir(exist_ok=True)
     image = render_png(build_html(day, events, hot), out / "calendrier.png")
 
     if DRY_RUN or not DISCORD_WEBHOOK:
         print(text)
+        print()
+        print(notes)
         print(f"Visuel : {image}")
         return
     if not FORCE and datetime.now(TZ) < send_time:
@@ -375,6 +416,8 @@ def main():
         print(f"Attente jusqu'à {SEND_AT} ({int(wait)} s)…")
         time.sleep(wait)
     send_discord(text, image)
+    for part in chunks(notes) if notes else []:
+        send_discord(part, None)
     state["last_sent"] = day.isoformat()
     save_state(state)
     print("Message envoyé sur Discord.")
