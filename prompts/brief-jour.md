@@ -5,6 +5,8 @@ Il est publié vers 7h (heure de Paris), avant l'ouverture européenne.
 
 ## 1. Rassembler les informations (dernières 24 heures uniquement)
 
+- **Chiffres de marché** (fiables, à utiliser en priorité pour les niveaux et variations) : `python market_snapshot.py`
+  (Nasdaq 100 futures et indice, S&P 500, VIX, taux US 10 ans, dollar, pétrole, or : dernier cours, variation, haut/bas/clôture de la veille).
 - **Calendrier du jour** : `curl -s https://nfs.faireconomy.media/ff_calendar_thisweek.json`
   (heures en heure de New York → convertis en heure de Paris ; garde USD + EUR/GBP majeurs, impact High/Medium, date du jour).
 - **Marchés de la nuit** : recherche web (outil de recherche, et Firecrawl si disponible — 2 recherches maximum) :
@@ -13,6 +15,7 @@ Il est publié vers 7h (heure de Paris), avant l'ouverture européenne.
 - **Résultats d'entreprises** du jour : poids lourds du Nasdaq qui publient aujourd'hui (avant l'ouverture ou après la clôture).
 
 Vérifie les dates : n'utilise que des informations des dernières 24 heures. Si tu n'es pas sûr d'un fait, ne l'écris pas.
+N'écris JAMAIS dans le brief qu'une donnée n'a pas pu être vérifiée ou qu'il faut « contrôler » quelque chose : omets simplement l'information.
 Le samedi et le dimanche, n'écris rien et ne publie rien.
 
 ## 2. Rédiger (format Discord, 1800 caractères maximum)
@@ -36,5 +39,5 @@ Pas de liens, pas de sources en fin de message.
 ## 3. Publier
 
 Écris le brief dans `/tmp/brief.md`, relis-le (orthographe, dates, heures), puis :
-`python post_discord.py "$WEBHOOK" /tmp/brief.md`
-(la variable WEBHOOK est donnée dans les instructions de la routine). Termine en affichant le brief publié.
+`python post_discord.py "<URL du webhook donnée dans les instructions de la routine>" /tmp/brief.md`
+(écris l'URL en toutes lettres dans la commande). Termine en affichant le brief publié.

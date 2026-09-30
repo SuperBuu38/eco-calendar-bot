@@ -5,6 +5,8 @@ Il est publié le dimanche soir et couvre la semaine du lundi au vendredi qui ar
 
 ## 1. Rassembler les informations (sources récentes uniquement)
 
+- **Chiffres de marché** (fiables, pour situer le contexte) : `python market_snapshot.py`
+  (Nasdaq 100, S&P 500, VIX, taux US 10 ans, dollar, pétrole, or).
 - **Calendrier macro** : `curl -s https://nfs.faireconomy.media/ff_calendar_thisweek.json`
   (le dimanche, ce flux contient normalement la semaine qui commence ; heures en heure de New York, convertis en heure de Paris).
   Si le flux contient encore la semaine passée, utilise `ff_calendar_nextweek.json` à la même adresse.
@@ -16,6 +18,7 @@ Il est publié le dimanche soir et couvre la semaine du lundi au vendredi qui ar
 
 Vérifie les dates : n'utilise que des informations récentes, ne présente jamais une vieille nouvelle comme actuelle.
 Si tu n'es pas sûr d'un fait, ne l'écris pas.
+N'écris JAMAIS dans le brief qu'une donnée n'a pas pu être vérifiée ou qu'il faut « contrôler » quelque chose : omets simplement l'information.
 
 ## 2. Rédiger (format Discord, 3500 caractères maximum)
 
@@ -47,5 +50,5 @@ Omets une section si elle est vide. Pas de liens, pas de sources en fin de messa
 ## 3. Publier
 
 Écris le brief dans `/tmp/brief.md`, relis-le (orthographe, dates, heures), puis :
-`python post_discord.py "$WEBHOOK" /tmp/brief.md`
-(la variable WEBHOOK est donnée dans les instructions de la routine). Termine en affichant le brief publié.
+`python post_discord.py "<URL du webhook donnée dans les instructions de la routine>" /tmp/brief.md`
+(écris l'URL en toutes lettres dans la commande). Termine en affichant le brief publié.

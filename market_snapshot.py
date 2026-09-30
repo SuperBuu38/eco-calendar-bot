@@ -11,7 +11,7 @@ SYMBOLS = {
     "^NDX": "Nasdaq 100 (indice)",
     "ES=F": "S&P 500 (futures)",
     "^VIX": "VIX",
-    "^TNX": "Taux US 10 ans (x10)",
+    "^TNX": "Taux US 10 ans (%)",
     "DX-Y.NYB": "Dollar (DXY)",
     "CL=F": "Pétrole WTI",
     "GC=F": "Or",
