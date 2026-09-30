@@ -2,19 +2,18 @@ name: Calendrier économique
 
 on:
   schedule:
-    # Toutes les 15 min (minutes décalées : GitHub est souvent en retard à :00)
-    - cron: "7,22,37,52 * * * *"
+    # 04:45 et 05:45 UTC = 6h45 à Paris (heure d'été puis d'hiver) ; le bot ignore le mauvais créneau
+    - cron: "45 4,5 * * *"
   workflow_dispatch:
     inputs:
-      mode:
-        description: "Mode à forcer (vide = normal)"
-        type: choice
-        options: ["", recap, week, alerts]
-        default: ""
+      force:
+        description: "Envoyer maintenant (ignore l'heure et le « déjà envoyé »)"
+        type: boolean
+        default: true
 
 permissions:
   contents: read
-  actions: write # nécessaire pour le keepalive (évite la désactivation après 60 jours)
+  actions: write # keepalive : évite la désactivation des tâches planifiées après 60 jours
 
 concurrency:
   group: eco-bot
@@ -23,7 +22,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -31,7 +30,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Restaurer l'état (alertes déjà envoyées, copie du calendrier)
+      - name: Restaurer l'état (dernier envoi)
         uses: actions/cache/restore@v4
         with:
           path: state
@@ -41,15 +40,20 @@ jobs:
       - name: Lancer le bot
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
           CURRENCIES: ${{ vars.CURRENCIES || 'USD,EUR,GBP' }}
-          IMPACTS: ${{ vars.IMPACTS || 'High' }}
-          RECAP_HOUR: ${{ vars.RECAP_HOUR || '7' }}
-          WEEK_HOUR: ${{ vars.WEEK_HOUR || '18' }}
-          ALERT_MINUTES: ${{ vars.ALERT_MINUTES || '30' }}
-          FORCE: ${{ inputs.mode != '' && '1' || '' }}
-        run: python bot.py ${{ inputs.mode }}
+          SEND_AT: ${{ vars.SEND_AT || '07:00' }}
+          FORCE: ${{ inputs.force && '1' || '' }}
+        run: python bot.py
+
+      - name: Garder le visuel (onglet Actions > Artifacts)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: calendrier
+          path: out/calendrier.png
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Sauvegarder l'état
         if: always()

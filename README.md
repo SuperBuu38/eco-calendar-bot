@@ -1,37 +1,28 @@
 # Bot calendrier économique
 
-Envoie sur Discord et/ou Telegram, gratuitement via GitHub Actions :
+Chaque matin à **7h (heure de Paris)**, envoie sur Discord le calendrier économique du jour :
+texte + visuel, gratuitement via GitHub Actions.
 
-- 📅 **le récap du jour** chaque matin (7h, heure de Paris) ;
-- ⚠️ **une alerte ~15-30 min avant** chaque annonce importante ;
-- 🗓️ **le programme de la semaine** le dimanche soir (18h).
-
-Source : flux gratuit ForexFactory. Le bot tourne toutes les 15 min.
+- **ForexFactory** (flux gratuit) + **Investing** (via Firecrawl, 1 crédit/jour) fusionnés :
+  une annonce importante oubliée par l'un est ajoutée, on garde l'impact le plus fort.
+- Annonces à impact fort et moyen, traduites en français, temps forts mis en avant.
 
 ## Configuration
 
 **Settings → Secrets and variables → Actions**
 
-Secrets (au moins une destination) :
-
 | Secret | Valeur |
 |---|---|
 | `DISCORD_WEBHOOK_URL` | URL du webhook du salon Discord |
-| `TELEGRAM_BOT_TOKEN` | Token donné par @BotFather |
-| `TELEGRAM_CHAT_ID` | ID de ta conversation Telegram |
+| `FIRECRAWL_API_KEY` | Clé API Firecrawl (facultatif : sans elle, ForexFactory seul) |
 
-Variables (facultatives) :
-
-| Variable | Défaut | Exemple |
-|---|---|---|
-| `CURRENCIES` | `USD,EUR,GBP` | `USD,EUR,GBP,JPY,CAD` |
-| `IMPACTS` | `High` | `High,Medium` |
-| `RECAP_HOUR` | `7` | `8` |
-| `WEEK_HOUR` | `18` | `20` |
-| `ALERT_MINUTES` | `30` | `45` |
+| Variable (facultative) | Défaut |
+|---|---|
+| `CURRENCIES` | `USD,EUR,GBP` |
+| `SEND_AT` | `07:00` |
 
 ## Tester
 
-Onglet **Actions → Calendrier économique → Run workflow**, choisir `recap`, `week` ou `alerts`.
+**Actions → Calendrier économique → Run workflow** : envoie immédiatement.
 
-En local : `FORCE=1 python bot.py recap` (affiche le message si aucune destination n'est configurée).
+En local : `FORCE=1 DRY_RUN=1 python bot.py` (affiche le texte, génère `out/calendrier.png`).
