@@ -300,7 +300,8 @@ def build_html(day, events, hot):
     values = {
         "TITLE": f"{JOURS[day.weekday()]} {day.day}{ordinal}{'' if ordinal else ' '}{MOIS[day.month - 1]}",
         "MONTH": MOIS_COURT[day.month - 1], "DAY": f"{day.day:02d}", "YEAR": str(day.year),
-        "N_HIGH": str(n_high), "N_MED": str(n_med), "N_HOT": str(len(hot)),
+        "N_HIGH": str(n_high), "N_MED": str(n_med), "N_HOT": str(len({(e["cur"], re.sub(r" \((m/m|a/a|t/t)\)$", "", translate(e)[0]))
+                           for e in events if id(e) in hot})),
         "HIGH_LABEL": "Aucune annonce majeure" if n_high == 0 else "À surveiller de près",
         "MED_LABEL": "Chiffres et discours", "HOT_LABEL": hot_label,
         "ROWS": "\n".join(rows),
