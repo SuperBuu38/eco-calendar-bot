@@ -227,11 +227,10 @@ def fr_date(d):
     return f"{JOURS[d.weekday()]} {d.day}{'er' if d.day == 1 else ''} {MOIS[d.month - 1]}"
 
 
-def build_text(day, events, hot):
+def build_text(day, events, hot, earnings=()):
     lines = [f"📅 **Calendrier économique — {fr_date(day)}** *(heure de Paris)*", ""]
     if not events:
         lines.append("Aucune annonce importante aujourd'hui sur " + ", ".join(CURRENCIES) + ". Journée calme 😌")
-        return "\n".join(lines)
     for e in events:
         fr, _ = translate(e)
         icon = "🔴" if e["impact"] >= 3 else "🟠"
@@ -245,6 +244,8 @@ def build_text(day, events, hot):
         lines.append(f"`{e['dt']:%H:%M}` {icon} {FLAGS.get(e['cur'], e['cur'])} **{fr}**{detail}{star}")
     if hot:
         lines += ["", "⭐ = temps fort de la journée"]
+    if earnings:
+        lines += ["", "🏢 **Résultats d'entreprises aujourd'hui**"] + earnings
     return "\n".join(lines)
 
 
@@ -386,6 +387,9 @@ def main():
     state = load_state()
 
     if not FORCE:
+        if day.weekday() >= 5:
+            print("Week-end : pas de calendrier.")
+            return
         if state.get("last_sent") == day.isoformat():
             print("Déjà envoyé aujourd'hui.")
             return
@@ -407,7 +411,13 @@ def main():
     added = sum(1 for e in events if e["src"] == {"INV"})
     print(f"{len(events)} annonces retenues ({added} ajoutées grâce à Investing).")
 
-    text = build_text(day, events, hot)
+    try:
+        from earnings import today_lines
+        earn = today_lines(day)
+    except Exception as exc:
+        print(f"Résultats d'entreprises indisponibles ({exc})")
+        earn = []
+    text = build_text(day, events, hot, earn)
     notes = build_fiches(events, hot)
     out = Path(os.getenv("OUT_DIR", ROOT / "out"))
     out.mkdir(exist_ok=True)
