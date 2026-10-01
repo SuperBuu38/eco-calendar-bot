@@ -264,8 +264,9 @@ def main():
     bot.send_discord(text[0], image)
     for part in text[1:]:
         bot.send_discord(part, None)
-    state["last_earnings"] = week_key
-    bot.save_state(state)
+    if not force:  # un envoi manuel ne bloque pas celui du dimanche
+        state["last_earnings"] = week_key
+        bot.save_state(state)
     print("Calendrier des résultats envoyé.")
 
 
