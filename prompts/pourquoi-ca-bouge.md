@@ -6,11 +6,14 @@ utilise-les comme données de départ (ce sont des chiffres de marché, pas des 
 
 ## 1. Comprendre le mouvement (5 minutes maximum)
 
-- `python market_snapshot.py` : regarde ce qui a bougé EN MÊME TEMPS (pétrole, taux US 10 ans, dollar, VIX, or, S&P 500).
-  Une corrélation nette est souvent l'explication (ex. pétrole +3 % et Nasdaq -1 % au même moment).
-- Recherche d'actualité des **dernières heures uniquement** (Firecrawl `firecrawl_search` avec `sources: ["news"]`
-  et `tbs: "qdr:h"` ou `"qdr:d"`, ou l'outil de recherche web) : Nasdaq / futures US, valeurs tech et semi-conducteurs,
-  pétrole / géopolitique, Fed / taux, Trump, annonces économiques, résultats d'entreprises.
+- **D'abord** `python intraday.py 4` : variations quart d'heure par quart d'heure du Nasdaq, du S&P 500, du pétrole,
+  des taux, du dollar, de l'Europe, de l'or, du VIX, de Nvidia et Micron. Repère ce qui a bougé **au même moment**
+  que le Nasdaq : c'est souvent l'explication (ex. pétrole +3 % pile quand le Nasdaq perd 1 %, ou chute à l'ouverture européenne de 9h).
+  Complète avec `python market_snapshot.py` (variations depuis la veille).
+- **Ensuite** l'actualité, avec l'outil Firecrawl `firecrawl_search` en priorité : `sources: ["news"]` et `tbs: "qdr:h"`
+  (dernière heure) puis `"qdr:d"` si rien ; requêtes courtes en anglais, ciblées sur la piste trouvée
+  (ex. « oil prices », « Iran », « Nasdaq futures », « chip stocks », « Treasury yields », « Fed »).
+  La recherche web classique ressort souvent de vieux articles : ne l'utilise qu'en dernier recours.
   3 recherches maximum. Pour lire un article, utilise le format `markdown` (pas `query`, trop cher en crédits).
 - **Vérifie la date de chaque article** : écarte tout ce qui n'est pas des dernières 24 heures
   (les moteurs de recherche ressortent parfois de vieux articles).
