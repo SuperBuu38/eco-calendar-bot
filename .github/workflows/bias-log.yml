@@ -1,0 +1,54 @@
+name: Journal des biais
+
+# Appelé par la routine Claude après chaque biais du soir : ajoute une ligne dans data/bias.json
+# (le tableau de bord du dimanche compare ensuite chaque biais à ce qui s'est réellement passé).
+on:
+  workflow_dispatch:
+    inputs:
+      date: { description: "Séance visée (AAAA-MM-JJ)", required: true }
+      bias: { description: "haussier / baissier / neutre", required: true }
+      confiance: { description: "faible / moyenne / haute", required: true }
+      haut: { description: "Niveau de validation ▲", required: true }
+      bas: { description: "Niveau d'invalidation ▼", required: true }
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bias-log
+  cancel-in-progress: false
+
+jobs:
+  log:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ajouter le biais
+        env:
+          D: ${{ inputs.date }}
+          B: ${{ inputs.bias }}
+          C: ${{ inputs.confiance }}
+          H: ${{ inputs.haut }}
+          L: ${{ inputs.bas }}
+        run: |
+          python - <<'PY'
+          import json, os, re
+          from datetime import datetime, timezone
+          d, b, c = os.environ["D"], os.environ["B"].lower().strip(), os.environ["C"].lower().strip()
+          assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", d) and b in ("haussier", "baissier", "neutre") \
+              and c in ("faible", "moyenne", "haute"), "entrée invalide"
+          num = lambda v: float(re.sub(r"[^\d.]", "", v.replace(",", ".")) or 0)
+          path = "data/bias.json"
+          rows = json.load(open(path)) if os.path.exists(path) else []
+          rows = [r for r in rows if r["date"] != d] + [{"date": d, "bias": b, "confiance": c, "haut": num(os.environ["H"]),
+                  "bas": num(os.environ["L"]), "enregistre": datetime.now(timezone.utc).isoformat(timespec="seconds")}]
+          json.dump(sorted(rows, key=lambda r: r["date"]), open(path, "w"), ensure_ascii=False, indent=1)
+          PY
+      - name: Enregistrer dans le dépôt
+        run: |
+          git config user.name "eco-calendar-bot"
+          git config user.email "SuperBuu38@users.noreply.github.com"
+          git add data/bias.json
+          git commit -m "Biais du ${{ inputs.date }} : ${{ inputs.bias }} (${{ inputs.confiance }})" || exit 0
+          git push

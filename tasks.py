@@ -32,6 +32,7 @@ OUT = Path(os.getenv("OUT_DIR", "out"))
 DRY_RUN = os.getenv("DRY_RUN", "").lower() in ("1", "true", "yes")
 WEBHOOK_NASDAQ = os.getenv("WEBHOOK_NASDAQ", "")
 WEBHOOK_ALERTES = os.getenv("WEBHOOK_ALERTES", "")
+WEBHOOK_BIAIS = os.getenv("WEBHOOK_BIAIS", "")
 FIRE_URL = os.getenv("ROUTINE_FIRE_URL", "")
 FIRE_TOKEN = os.getenv("ROUTINE_FIRE_TOKEN", "")
 UA = {"User-Agent": "Mozilla/5.0"}
@@ -144,7 +145,16 @@ def chart_png(candles, levels, title, name):
     """candles : [(dt, o, h, l, c)] ; levels : [(libellé, prix, couleur)]."""
     if len(candles) < 5:
         return None
-    W, H, L, R, T, B = 1600, 860, 30, 200, 70, 50
+    W, H, L, R, T, B = 1600, 860, 30, 290, 70, 50
+    span = candles[-1][0] - candles[0][0]
+    jours = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"]
+
+    def xlabel(i, dt):  # graduations adaptées à la durée affichée
+        if span <= timedelta(days=2):
+            return f"{dt:%Hh}" if dt.minute == 0 and dt.hour % 3 == 0 else None
+        if span <= timedelta(days=12):
+            return f"{jours[dt.weekday()]} {dt.day}" if i and candles[i - 1][0].date() != dt.date() else None
+        return f"{dt:%d/%m}" if i % 10 == 0 else None
     prices = [p for c in candles for p in c[2:4]] + [lv[1] for lv in levels]
     lo, hi = min(prices), max(prices)
     pad = (hi - lo) * 0.06 or 1
@@ -159,15 +169,16 @@ def chart_png(candles, levels, title, name):
         top, bot_ = y(max(o, c)), y(min(o, c))
         svg.append(f'<rect x="{x - step * 0.35:.1f}" y="{top:.1f}" width="{step * 0.7:.1f}" '
                    f'height="{max(bot_ - top, 1.2):.1f}" fill="{col}"/>')
-        if dt.minute == 0 and dt.hour % 3 == 0:
-            svg.append(f'<text x="{x:.1f}" y="{H - 18}" fill="#7f8aa0" font-size="18" text-anchor="middle">{dt:%Hh}</text>')
+        lab = xlabel(i, dt)
+        if lab:
+            svg.append(f'<text x="{x:.1f}" y="{H - 18}" fill="#7f8aa0" font-size="18" text-anchor="middle">{lab}</text>')
     label_y = []  # étiquettes espacées d'au moins 24 px pour rester lisibles
     for label, p, col in sorted(levels, key=lambda lv: -lv[1]):
         yy = y(p)
         ty = max(yy + 6, (label_y[-1] + 24) if label_y else 0)
         label_y.append(ty)
         svg.append(f'<line x1="{L}" y1="{yy:.1f}" x2="{W - R + 10}" y2="{yy:.1f}" stroke="{col}" stroke-width="2" stroke-dasharray="8 6"/>')
-        svg.append(f'<text x="{W - R + 18}" y="{ty:.1f}" fill="{col}" font-size="19" font-weight="700">{label} {num(p)}</text>')
+        svg.append(f'<text x="{W - R + 18}" y="{ty:.1f}" fill="{col}" font-size="18" font-weight="700">{label} {num(p)}</text>')
     page = f"""<!doctype html><html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;800&display=swap" rel="stylesheet">
 <style>body{{margin:0;width:{W}px;height:{H}px;background:#070a10;font-family:Inter,"Segoe UI",sans-serif}}
@@ -416,6 +427,104 @@ def task_bilan(now, state, agenda):
     post(WEBHOOK_NASDAQ, "\n".join(lines), img)
 
 
+JOURS_FR = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+
+
+def task_biais_soir(now, state):
+    """22h40 : carte des niveaux + biais de Claude pour la prochaine séance."""
+    key = f"biais:{now.date()}"
+    if key in state or not trading_day(now.date()) or not (22, 40) <= (now.hour, now.minute) < (23, 40):
+        return
+    state[key] = now.isoformat()
+    from agenda import next_session
+    import levels
+    target = next_session(now.date())
+    a = levels.compute()
+    img, hidden = levels.make_map(a)
+    txt = f"🗺️ **Carte des niveaux** · pour {JOURS_FR[target.weekday()]} {target:%d/%m}"
+    if hidden:
+        txt += "\nHors graphique : " + " · ".join(f"{k} {num(v)}" for k, v, _ in hidden)
+    post(WEBHOOK_BIAIS, txt, img)
+    fire(f"TÂCHE: biais\nSéance visée : {target.isoformat()} ({JOURS_FR[target.weekday()]} {target:%d/%m/%Y})")
+
+
+def task_biais_matin(now, state):
+    """8h : le biais tient-il toujours après la nuit ?"""
+    key = f"biais-matin:{now.date()}"
+    if key in state or not trading_day(now.date()) or not (8, 0) <= (now.hour, now.minute) < (8, 45):
+        return
+    state[key] = now.isoformat()
+    if any(b["date"] == now.date().isoformat() for b in load_bias()):
+        fire(f"TÂCHE: biais-matin\nSéance : {now.date().isoformat()} ({JOURS_FR[now.weekday()]} {now:%d/%m/%Y})")
+    else:
+        print("Pas de biais enregistré pour aujourd'hui : pas de mise à jour.")
+
+
+def load_bias():
+    """Journal des biais (data/bias.json), lu à jour via l'API GitHub, sinon depuis le dépôt local."""
+    import subprocess
+    try:
+        r = subprocess.run(["gh", "api", f"repos/{os.getenv('GITHUB_REPOSITORY', 'SuperBuu38/eco-calendar-bot')}/contents/data/bias.json",
+                            "-H", "Accept: application/vnd.github.raw"], capture_output=True, text=True, timeout=30)
+        if r.returncode == 0:
+            return json.loads(r.stdout)
+    except Exception:
+        pass
+    try:
+        return json.loads((Path(__file__).parent / "data" / "bias.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+
+
+def score_bias(rows, d1):
+    """Compare chaque biais à la séance réelle (variation de clôture des contrats NQ)."""
+    closes = {c[0].date(): c for c in d1}
+    days = sorted(closes)
+    out = []
+    for b in rows:
+        d = date.fromisoformat(b["date"])
+        if d not in closes or days.index(d) == 0:
+            continue
+        _, _, hi, lo, c = closes[d]
+        prev = closes[days[days.index(d) - 1]][4]
+        chg = (c / prev - 1) * 100
+        ok = {"haussier": chg > 0, "baissier": chg < 0, "neutre": abs(chg) < 0.4}[b["bias"]]
+        out.append(dict(b, chg=chg, ok=ok, touche_haut=hi >= b["haut"] > 0, touche_bas=0 < b["bas"] >= lo))
+    return out
+
+
+def task_dimanche(now, state):
+    """Dimanche 18h : carte de la semaine + tableau de bord du biais."""
+    key = f"dimanche:{now.date()}"
+    if key in state or not (18, 0) <= (now.hour, now.minute) < (19, 30):
+        return
+    state[key] = now.isoformat()
+    import levels
+    a = levels.compute()
+    img, _ = levels.make_map(a, weekly=True)
+    lines = [f"🗺️ **Carte de la semaine** · niveaux de fond pour la semaine du {now.date() + timedelta(days=1):%d/%m}"]
+    scored = score_bias(load_bias(), a["d1"])
+    week = [s for s in scored if date.fromisoformat(s["date"]) > now.date() - timedelta(days=7)]
+    month = [s for s in scored if date.fromisoformat(s["date"]) > now.date() - timedelta(days=30)]
+    if week:
+        icon = {"haussier": "▲", "baissier": "▼", "neutre": "＝"}
+        lines += ["", f"📊 **Tableau de bord du biais** · cette semaine **{sum(s['ok'] for s in week)}/{len(week)}** justes"]
+        for s in week:
+            d = date.fromisoformat(s["date"])
+            lines.append(f"{'✅' if s['ok'] else '❌'} {JOURS_FR[d.weekday()].capitalize()} {d:%d/%m} : {icon[s['bias']]} {s['bias']} "
+                         f"({s['confiance']}) → séance {pct(s['chg'])}")
+        if len(month) > len(week):
+            lines.append(f"Sur 30 jours : **{sum(s['ok'] for s in month)}/{len(month)}** "
+                         f"({sum(s['ok'] for s in month) / len(month) * 100:.0f} %)")
+        by_conf = {c: [s for s in month if s["confiance"] == c] for c in ("haute", "moyenne", "faible")}
+        detail = [f"{c} {sum(s['ok'] for s in v)}/{len(v)}" for c, v in by_conf.items() if v]
+        if detail:
+            lines.append("Par niveau de confiance : " + " · ".join(detail))
+    else:
+        lines += ["", "📊 Le tableau de bord du biais démarre cette semaine : premiers scores dimanche prochain."]
+    post(WEBHOOK_BIAIS, "\n".join(lines), img)
+
+
 def main():
     now = now_paris()
     try:
@@ -423,15 +532,20 @@ def main():
     except (OSError, ValueError):
         state = {}
     try:
-        if now.hour >= 7 and now.weekday() < 5:
-            agenda = build_agenda(now.date(), state)
-            for task in (task_premarket, task_macro, task_earnings, task_bilan):
-                try:
-                    task(now, state, agenda)
-                except Exception as exc:
-                    print(f"{task.__name__} en échec : {exc}")
-        else:
-            print("Rien de prévu à cette heure.")
+        todo = []
+        if now.weekday() < 5:
+            todo.append(lambda: task_biais_matin(now, state))
+            if now.hour >= 7:
+                agenda = build_agenda(now.date(), state)
+                todo += [lambda t=t: t(now, state, agenda) for t in (task_premarket, task_macro, task_earnings, task_bilan)]
+                todo.append(lambda: task_biais_soir(now, state))
+        if now.weekday() == 6:
+            todo.append(lambda: task_dimanche(now, state))
+        for job in todo:
+            try:
+                job()
+            except Exception as exc:
+                print(f"Tâche en échec : {exc}")
     finally:
         # ménage : 4 jours d'historique
         cutoff = (now.date() - timedelta(days=4)).isoformat()

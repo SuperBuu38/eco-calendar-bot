@@ -43,6 +43,8 @@ jobs:
         env:
           WEBHOOK_ALERTES: ${{ secrets.WEBHOOK_ALERTES }}
           WEBHOOK_NASDAQ: ${{ secrets.WEBHOOK_NASDAQ }}
+          WEBHOOK_BIAIS: ${{ secrets.WEBHOOK_BIAIS }}
+          GH_TOKEN: ${{ github.token }}
           FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
           ROUTINE_FIRE_URL: ${{ secrets.ROUTINE_FIRE_URL }}
           ROUTINE_FIRE_TOKEN: ${{ secrets.ROUTINE_FIRE_TOKEN }}
