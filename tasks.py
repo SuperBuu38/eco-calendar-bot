@@ -159,10 +159,13 @@ def chart_png(candles, levels, title, name):
                    f'height="{max(bot_ - top, 1.2):.1f}" fill="{col}"/>')
         if dt.minute == 0 and dt.hour % 3 == 0:
             svg.append(f'<text x="{x:.1f}" y="{H - 18}" fill="#7f8aa0" font-size="18" text-anchor="middle">{dt:%Hh}</text>')
-    for label, p, col in levels:
+    label_y = []  # étiquettes espacées d'au moins 24 px pour rester lisibles
+    for label, p, col in sorted(levels, key=lambda lv: -lv[1]):
         yy = y(p)
+        ty = max(yy + 6, (label_y[-1] + 24) if label_y else 0)
+        label_y.append(ty)
         svg.append(f'<line x1="{L}" y1="{yy:.1f}" x2="{W - R + 10}" y2="{yy:.1f}" stroke="{col}" stroke-width="2" stroke-dasharray="8 6"/>')
-        svg.append(f'<text x="{W - R + 18}" y="{yy + 6:.1f}" fill="{col}" font-size="19" font-weight="700">{label} {num(p)}</text>')
+        svg.append(f'<text x="{W - R + 18}" y="{ty:.1f}" fill="{col}" font-size="19" font-weight="700">{label} {num(p)}</text>')
     page = f"""<!doctype html><html><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;800&display=swap" rel="stylesheet">
 <style>body{{margin:0;width:{W}px;height:{H}px;background:#070a10;font-family:Inter,"Segoe UI",sans-serif}}
@@ -249,6 +252,10 @@ def task_premarket(now, state, agenda):
                                                  ("Nuit B", "nuit_b", "#38bdf8")] if k in lv]
     img = chart_png(candles, levels, f"Nasdaq 100 (contrats à terme) · bougies 15 min · {now:%d/%m %H:%M}", "avant-ouverture.png")
     post(WEBHOOK_NASDAQ, "\n".join(lines), img)
+    try:
+        fire("TÂCHE: plan\n" + "\n".join(lines))
+    except Exception as exc:
+        print(f"Plan de séance non déclenché ({exc})")
 
 
 def parse_num(v):

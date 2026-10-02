@@ -22,6 +22,7 @@ SYMBOL = "NQ=F"
 FAST_PCT = float(os.getenv("FAST_PCT", "0.7"))
 LEVELS = [float(x) for x in os.getenv("LEVELS", "1.2,2,3").split(",")]
 COOLDOWN = timedelta(hours=2)
+AMPLIFY_PCT = float(os.getenv("AMPLIFY_PCT", "0.5"))
 STATE_FILE = Path(os.getenv("STATE_DIR", "state")) / "movers.json"
 DRY_RUN = os.getenv("DRY_RUN", "").lower() in ("1", "true", "yes")
 WEBHOOK = os.getenv("WEBHOOK_ALERTES", "")
@@ -47,13 +48,12 @@ def fetch():
     return meta, bars
 
 
-def post(content):
+def post(content, image=None):
     if DRY_RUN or not WEBHOOK:
-        print("[Discord]", content)
+        print("[Discord]", content, "| image :", image)
         return
-    req = urllib.request.Request(WEBHOOK, data=json.dumps({"content": content}).encode(),
-                                 headers={"Content-Type": "application/json", "User-Agent": "eco-calendar-bot/2.0"})
-    urllib.request.urlopen(req, timeout=30).read()
+    from tasks import post as tpost
+    tpost(WEBHOOK, content, image)
 
 
 def fire_routine(text):
@@ -104,8 +104,25 @@ def main():
             key = f"lvl:{session}:{'up' if dsess > 0 else 'down'}:{lvl}"
             if key not in state:
                 state[key] = now.isoformat()
-                if not reasons or lvl == max(l for l in LEVELS if abs(dsess) >= l):
+                fast_dir = (d60 > 0) if abs(d60) >= FAST_PCT else None
+                same_dir = fast_dir is None or fast_dir == (dsess > 0)
+                if same_dir and (not reasons or lvl == max(l for l in LEVELS if abs(dsess) >= l)):
                     reasons.append(f"{fr(dsess)} % depuis la clôture d'hier (palier ±{str(lvl).replace('.', ',')} %)")
+
+    up = (d60 if abs(d60) >= FAST_PCT else dsess) > 0
+    # Anti-bruit : une seule alerte par mouvement. Dans le même sens et dans l'heure qui suit,
+    # on ne réalerte que si le mouvement s'est amplifié d'au moins AMPLIFY_PCT depuis la dernière alerte.
+    if reasons:
+        side = "up" if up else "down"
+        prev = state.get(f"last:{side}")
+        if prev:
+            p_t, p_price = prev.split("|")
+            if now - datetime.fromisoformat(p_t) < timedelta(hours=1) and \
+                    abs(last / float(p_price) - 1) * 100 < AMPLIFY_PCT:
+                print(f"Mouvement déjà signalé à {p_t[11:16]} UTC (pas d'amplification suffisante) : pas de nouvelle alerte.")
+                reasons = []
+        if reasons:
+            state[f"last:{side}"] = f"{now.isoformat()}|{last}"
 
     # ménage : on garde 3 jours d'historique
     cutoff = (now - timedelta(days=3)).isoformat()
@@ -116,8 +133,6 @@ def main():
     if not reasons:
         print("Pas de mouvement notable.")
         return
-
-    up = (d60 if abs(d60) >= FAST_PCT else dsess) > 0
     paris = last_t.astimezone(TZ)
     icon = "🚀" if up else "🔻"
     head = f"{icon} **Nasdaq 100 {'en forte hausse' if up else 'en forte baisse'}** · {paris:%H:%M}"
@@ -127,8 +142,20 @@ def main():
         f"Mouvement détecté sur les contrats à terme Nasdaq 100 (NQ) à {paris:%H:%M} heure de Paris, le {paris:%d/%m/%Y}.\n"
         f"Dernier cours : {last:.2f}. Il y a 1 heure : {p60:.2f} ({d60:+.2f} %). "
         f"Clôture de la veille : {prev_close:.2f} ({dsess:+.2f} %).\nDéclencheurs : " + " ; ".join(reasons))
-    tail = "\n🔎 Analyse des causes en cours…" if fired else ""
-    post(f"{head}\n{body}\n{ctx}{tail}")
+    tail = "\n🔎 Analyse et scénarios en cours…" if fired else ""
+    image = None
+    try:  # graphique des 8 dernières heures avec les niveaux clés
+        from tasks import bars as tbars, chart_png, session_levels
+        m15, _ = tbars("NQ=F", "5d", "15m")
+        lv = session_levels(m15, paris.date())
+        levels = [(n, lv[k], col) for n, k, col in [("Veille H", "veille_h", "#f2b94b"), ("Veille B", "veille_b", "#f2b94b"),
+                                                     ("Clôture", "veille_c", "#94a3b8"), ("Nuit H", "nuit_h", "#38bdf8"),
+                                                     ("Nuit B", "nuit_b", "#38bdf8")] if k in lv]
+        recent = [c for c in m15 if c[0] >= paris - timedelta(hours=8)]
+        image = chart_png(recent, levels, f"Nasdaq 100 · bougies 15 min · {paris:%d/%m %H:%M}", "alerte.png")
+    except Exception as exc:
+        print(f"Graphique indisponible ({exc})")
+    post(f"{head}\n{body}\n{ctx}{tail}", image)
 
 
 if __name__ == "__main__":
