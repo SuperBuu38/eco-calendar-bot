@@ -39,9 +39,11 @@ jobs:
           key: movers-state-${{ github.run_id }}
           restore-keys: movers-state-
 
-      - name: Surveiller le Nasdaq (toutes les 5 min pendant ~5h40)
+      - name: Surveiller le Nasdaq et dérouler l'agenda (toutes les 5 min pendant ~5h40)
         env:
           WEBHOOK_ALERTES: ${{ secrets.WEBHOOK_ALERTES }}
+          WEBHOOK_NASDAQ: ${{ secrets.WEBHOOK_NASDAQ }}
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
           ROUTINE_FIRE_URL: ${{ secrets.ROUTINE_FIRE_URL }}
           ROUTINE_FIRE_TOKEN: ${{ secrets.ROUTINE_FIRE_TOKEN }}
           FAST_PCT: ${{ vars.FAST_PCT || '0.7' }}
@@ -50,6 +52,7 @@ jobs:
           end=$(( $(date +%s) + ${{ inputs.minutes || '340' }}*60 ))
           while [ "$(date +%s)" -lt "$end" ]; do
             python movers.py || echo "Vérification en échec, on continue."
+            python tasks.py || echo "Agenda en échec, on continue."
             sleep 300
           done
 

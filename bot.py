@@ -113,6 +113,7 @@ def fetch_investing():
             "impact": int(o.get("importance") or 1),
             "forecast": o.get("forecast") or "",
             "previous": o.get("previous") or "",
+            "actual": o.get("actual") or "",
             "speech": bool(o.get("isSpeech")),
             "src": {"INV"},
         })
@@ -246,6 +247,13 @@ def build_text(day, events, hot, earnings=()):
         lines += ["", "⭐ = temps fort de la journée"]
     if earnings:
         lines += ["", "🏢 **Résultats d'entreprises aujourd'hui**"] + earnings
+    try:
+        from special_dates import notes_for
+        notes = notes_for(day)
+    except Exception:
+        notes = []
+    if notes:
+        lines += [""] + notes
     return "\n".join(lines)
 
 

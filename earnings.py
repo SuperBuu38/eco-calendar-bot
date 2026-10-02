@@ -228,7 +228,14 @@ def build_text(start, end, events, later=()):
         lines.append(f"{icon} {star}**{e['name']}** ({e['symbol']}) · {e['when_label'].lower()}{eps}")
     if later:
         lines += ["", "📆 **Prochains poids lourds** : " + " · ".join(f"{e['name']} {fr_date(e['day'], True)}" for e in later)]
-    lines += ["", "🌅 avant l'ouverture (15h30) · 🌙 après la clôture (22h) · ⭐ poids lourd du Nasdaq"]
+    try:
+        from special_dates import week_notes
+        specials = week_notes(start, 7)
+    except Exception:
+        specials = []
+    if specials:
+        lines += ["", "🗓️ **Dates spéciales cette semaine** : " + " · ".join(specials)]
+    lines +=["", "🌅 avant l'ouverture (15h30) · 🌙 après la clôture (22h) · ⭐ poids lourd du Nasdaq"]
     return "\n".join(lines)
 
 
