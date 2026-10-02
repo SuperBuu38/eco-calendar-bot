@@ -1,1 +1,10 @@
-[]
+[
+ {
+  "date": "2026-10-05",
+  "bias": "haussier",
+  "confiance": "moyenne",
+  "haut": 31282.0,
+  "bas": 30988.0,
+  "enregistre": "2026-10-02T20:44:51+00:00"
+ }
+]
