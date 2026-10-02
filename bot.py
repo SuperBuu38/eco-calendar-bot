@@ -122,7 +122,8 @@ def fetch_investing():
 
 # --- Fusion -------------------------------------------------------------------
 _REPL = [(r"m/m", " mom "), (r"y/y", " yoy "), (r"q/q", " qoq "), (r"\bnon-farm\b", "nonfarm"),
-         (r"\bnfp\b", "nonfarm payrolls")]
+         (r"\bnfp\b", "nonfarm payrolls"), (r"nonfarm employment change", "nonfarm payrolls"),
+         (r"\bunemployment claims\b", "initial jobless claims")]
 _DROP = {"prelim", "final", "flash", "preliminary", "revised", "the", "of", "s", "sa", "nsa"}
 
 

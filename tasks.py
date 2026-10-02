@@ -265,34 +265,77 @@ def parse_num(v):
     return float(m.group().replace(",", ".")) if m else None
 
 
+NY = ZoneInfo("America/New_York")
+NASDAQ_ECO = "https://api.nasdaq.com/api/calendar/economicevents?date={}"
+
+
+def nasdaq_actuals(day):
+    """Chiffres publiés du jour (source gratuite, interrogeable toutes les 15 s). L'API range chaque journée
+    sous la date du lendemain et donne les heures de New York."""
+    req = urllib.request.Request(NASDAQ_ECO.format((day + timedelta(days=1)).isoformat()), headers={
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36",
+        "Accept": "application/json"})
+    rows = ((json.load(urllib.request.urlopen(req, timeout=15)).get("data") or {}).get("rows")) or []
+    out = []
+    for r in rows:
+        actual = (r.get("actual") or "").replace("&nbsp;", "").strip()
+        if r.get("country") != "United States" or not actual or not re.match(r"\d{1,2}:\d{2}$", r.get("gmt") or ""):
+            continue
+        h, m = map(int, r["gmt"].split(":"))
+        dt = datetime(day.year, day.month, day.day, h, m, tzinfo=NY).astimezone(TZ)
+        out.append({"dt": dt, "title": r.get("eventName", ""), "actual": actual})
+    return out
+
+
+def match_actuals(evs, t_dt, found):
+    """Associe chaque annonce de l'agenda à un chiffre publié à la même heure (± 5 min)."""
+    actuals = {}
+    same_time = [x for x in found if abs((x["dt"] - t_dt).total_seconds()) <= 300]
+    for e in evs:
+        best = max(same_time, key=lambda x: bot.similar({"title": e["title"]}, x), default=None)
+        if best and bot.similar({"title": e["title"]}, best) >= 0.3:
+            actuals[e["title"]] = best["actual"]
+    return actuals
+
+
 def task_macro(now, state, agenda):
     slots = {}
     for e in agenda["macro"]:
         slots.setdefault(e["t"], []).append(e)
-    for t, evs in slots.items():
+    for t, evs in sorted(slots.items()):
         t_dt = datetime.fromisoformat(t)
         key = f"macro:{t}"
-        if key in state or now < t_dt + timedelta(minutes=2) or now > t_dt + timedelta(minutes=45):
+        if key in state or now < t_dt - timedelta(minutes=6) or now > t_dt + timedelta(minutes=45):
             continue
-        tries = state.get(f"{key}:tries", 0)
-        actuals = {}
-        if not bot.FIRECRAWL_KEY:
-            print("Pas de clé Firecrawl : chiffres publiés indisponibles.")
-            return
-        try:
-            inv = [x for x in bot.fetch_investing() if x["cur"] == "USD" and x.get("actual")]
-            for e in evs:
-                best = max(inv, key=lambda x: bot.similar({"title": e["title"]}, x) - abs((x["dt"] - t_dt).total_seconds()) / 3600,
-                           default=None)
-                if best and bot.similar({"title": e["title"]}, best) >= 0.5:
-                    actuals[e["title"]] = best["actual"]
-        except Exception as exc:
-            print(f"Investing indisponible ({exc})")
-        state[f"{key}:tries"] = tries + 1
-        if len(actuals) < len(evs) and tries < 2:
-            continue  # on réessaie à la prochaine vérification (5 min)
-        state[key] = now.isoformat()
+        # Veille active : on attend l'heure exacte, puis on interroge la source toutes les 15 s.
+        live = not os.getenv("NOW")
+        if live and datetime.now(TZ) < t_dt:
+            wait = (t_dt - datetime.now(TZ)).total_seconds()
+            print(f"Annonce de {t_dt:%H:%M} : veille active ({int(wait)} s d'attente).")
+            time.sleep(wait)
+        deadline = max(datetime.now(TZ), t_dt) + timedelta(minutes=8)
+        actuals, first_seen = {}, None
+        while True:
+            try:
+                actuals = match_actuals(evs, t_dt, nasdaq_actuals(t_dt.date()))
+            except Exception as exc:
+                print(f"Source Nasdaq indisponible ({exc})")
+            if actuals and first_seen is None:
+                first_seen = time.time()
+            complete = len(actuals) == len(evs)
+            # tout est là, ou une partie est là depuis 30 s : on publie sans attendre davantage
+            if complete or (first_seen and time.time() - first_seen > 30) or not live or datetime.now(TZ) > deadline:
+                break
+            time.sleep(15)
+        if not actuals and bot.FIRECRAWL_KEY:  # secours : Investing (1 crédit)
+            try:
+                inv = [dict(x, dt=x["dt"]) for x in bot.fetch_investing() if x["cur"] == "USD" and x.get("actual")]
+                actuals = match_actuals(evs, t_dt, inv)
+            except Exception as exc:
+                print(f"Investing indisponible ({exc})")
+        state[key] = datetime.now(TZ).isoformat()
         if not actuals:
+            print(f"Annonce de {t_dt:%H:%M} : chiffres introuvables.")
             continue
         lines = [f"📊 **{t_dt:%H:%M} · Chiffres US**"]
         for e in evs:
@@ -311,13 +354,15 @@ def task_macro(now, state, agenda):
         try:
             nq, _ = bars("NQ=F", "1d", "1m")
             before = [c for c in nq if c[0] <= t_dt]
-            if before:
+            if before and nq[-1][0] > t_dt:
                 p0, p1 = before[-1][4], nq[-1][4]
                 lines.append(f"📈 Nasdaq 100 depuis {t_dt:%H:%M} : **{pct((p1 / p0 - 1) * 100)}** ({num(p0)} → {num(p1)})")
         except Exception:
             pass
+        delay = int((datetime.now(TZ) - t_dt).total_seconds())
+        print(f"Annonce de {t_dt:%H:%M} : publiée {delay} s après l'heure.")
         post(WEBHOOK_ALERTES, "\n".join(lines))
-        state.setdefault(f"recap:{now.date()}", []).append(lines[1:-1] if len(lines) > 2 else lines[1:])
+        state.setdefault(f"recap:{t_dt.date()}", []).append([l for l in lines[1:] if not l.startswith("📈")])
         if any(FED.search(e["title"]) for e in evs):
             fire(f"TÂCHE: fed\nDécision de politique monétaire de la Fed publiée à {t_dt:%H:%M} (heure de Paris) le {t_dt:%d/%m/%Y}.\n"
                  + "\n".join(lines[1:]))
