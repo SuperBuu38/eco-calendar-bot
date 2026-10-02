@@ -1,14 +1,17 @@
 name: Détecteur de mouvement Nasdaq
 
+# Le planificateur de GitHub est trop irrégulier : ce workflow tourne donc en BOUCLE
+# (une vérification toutes les 5 min pendant ~5h40), puis se relance lui-même.
+# Le réveil quotidien (routine Claude) le relance s'il s'est arrêté.
+
 on:
-  schedule:
-    # Toutes les 15 min, du dimanche soir au vendredi soir (heures de cotation des contrats NQ)
-    - cron: "2,17,32,47 * * * 0-5"
   workflow_dispatch:
+  schedule:
+    - cron: "17 */6 * * *" # filet de sécurité supplémentaire
 
 permissions:
   contents: read
-  actions: write
+  actions: write # pour se relancer et pour le keepalive
 
 concurrency:
   group: movers
@@ -17,7 +20,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 355
     steps:
       - uses: actions/checkout@v4
 
@@ -32,14 +35,19 @@ jobs:
           key: movers-state-${{ github.run_id }}
           restore-keys: movers-state-
 
-      - name: Vérifier le Nasdaq
+      - name: Surveiller le Nasdaq (toutes les 5 min pendant ~5h40)
         env:
           WEBHOOK_ALERTES: ${{ secrets.WEBHOOK_ALERTES }}
           ROUTINE_FIRE_URL: ${{ secrets.ROUTINE_FIRE_URL }}
           ROUTINE_FIRE_TOKEN: ${{ secrets.ROUTINE_FIRE_TOKEN }}
           FAST_PCT: ${{ vars.FAST_PCT || '0.7' }}
           LEVELS: ${{ vars.LEVELS || '1.2,2,3' }}
-        run: python movers.py
+        run: |
+          end=$(( $(date +%s) + 340*60 ))
+          while [ "$(date +%s)" -lt "$end" ]; do
+            python movers.py || echo "Vérification en échec, on continue."
+            sleep 300
+          done
 
       - name: Sauvegarder l'état
         if: always()
@@ -48,8 +56,8 @@ jobs:
           path: state
           key: movers-state-${{ github.run_id }}
 
-      - name: Keepalive
+      - name: Se relancer
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/movers.yml/enable" || true
+        run: gh workflow run movers.yml --repo "${{ github.repository }}" --ref "${{ github.ref_name }}"
