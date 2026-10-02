@@ -62,7 +62,7 @@ def fire_routine(text):
         return False
     req = urllib.request.Request(FIRE_URL, data=json.dumps({"text": text}).encode(), headers={
         "Authorization": f"Bearer {FIRE_TOKEN}", "anthropic-beta": "experimental-cc-routine-2026-04-01",
-        "anthropic-version": "2023-06-01", "Content-Type": "application/json"})
+        "anthropic-version": "2023-06-01", "Content-Type": "application/json", "User-Agent": "eco-calendar-bot/2.0"})
     try:
         urllib.request.urlopen(req, timeout=30).read()
         return True
