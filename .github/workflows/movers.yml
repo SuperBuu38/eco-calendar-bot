@@ -6,6 +6,10 @@ name: Détecteur de mouvement Nasdaq
 
 on:
   workflow_dispatch:
+    inputs:
+      minutes:
+        description: "Durée de surveillance en minutes (test)"
+        default: "340"
   schedule:
     - cron: "17 */6 * * *" # filet de sécurité supplémentaire
 
@@ -43,7 +47,7 @@ jobs:
           FAST_PCT: ${{ vars.FAST_PCT || '0.7' }}
           LEVELS: ${{ vars.LEVELS || '1.2,2,3' }}
         run: |
-          end=$(( $(date +%s) + 340*60 ))
+          end=$(( $(date +%s) + ${{ inputs.minutes || '340' }}*60 ))
           while [ "$(date +%s)" -lt "$end" ]; do
             python movers.py || echo "Vérification en échec, on continue."
             sleep 300
