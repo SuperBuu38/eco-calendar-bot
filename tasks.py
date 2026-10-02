@@ -84,6 +84,7 @@ def post(url, text, image=None):
     req = urllib.request.Request(url, data=body, headers={
         "Content-Type": f"multipart/form-data; boundary={boundary}", "User-Agent": "eco-calendar-bot/2.0"})
     urllib.request.urlopen(req, timeout=60).read()
+    print(f"Publié sur Discord : {text.splitlines()[0]}")
 
 
 def fire(text):
@@ -94,6 +95,7 @@ def fire(text):
         "Authorization": f"Bearer {FIRE_TOKEN}", "anthropic-beta": "experimental-cc-routine-2026-04-01",
         "anthropic-version": "2023-06-01", "Content-Type": "application/json", "User-Agent": "eco-calendar-bot/2.0"})
     urllib.request.urlopen(req, timeout=30).read()
+    print(f"Analyste Claude déclenché : {text.splitlines()[0]}")
 
 
 def trading_day(d):
